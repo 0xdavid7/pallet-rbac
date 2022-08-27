@@ -1,4 +1,4 @@
-#RBAC
+# tranhuyducseven-rbac
 
 ## This repository is cloned from [substrate-rbac](https://github.com/gautamdhameja/substrate-rbac)
 ## I have just adjusted the version of dependencies
@@ -6,8 +6,9 @@
 2. nightly: v1.65
 3. others: in `Cargo.toml`, v6.0.0 instead of v4.0.0-dev
 
--->
-##Substrate Role-based Access Control Pallet
+------
+
+## Substrate Role-based Access Control Pallet
 
 A [Substrate](https://github.com/paritytech/substrate) pallet implementing role-based access control and permissions for Substrate extrinsic calls.
 
