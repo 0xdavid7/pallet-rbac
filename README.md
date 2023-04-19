@@ -1,12 +1,16 @@
-# tranhuyducseven-rbac
+# pallet-rbac
 
-## This repository is cloned from [substrate-rbac](https://github.com/gautamdhameja/substrate-rbac)
-## I have just adjusted the version of dependencies
-1. polkadot: v9.26
-2. nightly: v1.65
-3. others: in `Cargo.toml`, v6.0.0 instead of v4.0.0-dev
+## This repository is the updated version for `substrate-rbac` pallet
 
-------
+>> <https://github.com/gautamdhameja/substrate-rbac>
+
+## Prerequisite
+
+| Dependencies | Version |
+|--|--|
+|polkadot | 0.9.40|
+| rustc stable | 1.68.2 |
+| rustc nightly | 1.70.0 |
 
 ## Substrate Role-based Access Control Pallet
 
@@ -63,7 +67,7 @@ pub type SignedExtra = (
 
 ```rust
 rbac: Some(RBACConfig {
-	super_admins: vec![get_account_id_from_seed::<sr25519::Public>("Alice")]
+ super_admins: vec![get_account_id_from_seed::<sr25519::Public>("Alice")]
 })
 ```
 

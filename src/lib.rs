@@ -8,7 +8,10 @@
 use codec::{Decode, Encode};
 
 use core::convert::TryInto;
-use frame_support::{traits::GetCallMetadata, weights::DispatchInfo};
+use frame_support::{traits::*, dispatch::DispatchInfo, pallet_prelude::MaxEncodedLen};
+
+use frame_support::inherent::Vec;
+
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_runtime::{
@@ -18,7 +21,16 @@ use sp_runtime::{
 	RuntimeDebug,
 };
 use sp_std::prelude::*;
-pub use sp_std::vec;
+
+use std::convert::From;
+
+use arrayvec::ArrayVec;
+
+
+
+const LIMIT_STRING: usize = 36;
+type PalletName = [u8;LIMIT_STRING];
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -29,13 +41,11 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
-		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-		type RbacAdminOrigin: EnsureOrigin<Self::Origin>;
+		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+		type RbacAdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 	}
 
 	#[pallet::pallet]
-	#[pallet::without_storage_info]
-	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
 
 	// The pallet's runtime storage items.
@@ -82,8 +92,8 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		AccessRevoked(T::AccountId, Vec<u8>),
-		AccessGranted(T::AccountId, Vec<u8>),
+		AccessRevoked(T::AccountId, PalletName),
+		AccessGranted(T::AccountId, PalletName),
 		SuperAdminAdded(T::AccountId),
 	}
 
@@ -99,10 +109,11 @@ pub mod pallet {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+		#[pallet::call_index(0)]
 		#[pallet::weight(0)]
 		pub fn create_role(
 			origin: OriginFor<T>,
-			pallet_name: Vec<u8>,
+			pallet_name: PalletName,
 			permission: Permission,
 		) -> DispatchResult {
 			ensure_signed(origin)?;
@@ -114,6 +125,7 @@ pub mod pallet {
 			Ok(())
 		}
 
+		#[pallet::call_index(1)]
 		#[pallet::weight(0)]
 		pub fn assign_role(
 			origin: OriginFor<T>,
@@ -132,6 +144,7 @@ pub mod pallet {
 			Ok(())
 		}
 
+		#[pallet::call_index(2)]
 		#[pallet::weight(0)]
 		pub fn revoke_access(
 			origin: OriginFor<T>,
@@ -154,6 +167,7 @@ pub mod pallet {
 		/// Super Admins have access to execute and manage all pallets.
 		///
 		/// Only _root_ can add a Super Admin.
+		#[pallet::call_index(3)]
 		#[pallet::weight(0)]
 		pub fn add_super_admin(origin: OriginFor<T>, account_id: T::AccountId) -> DispatchResult {
 			T::RbacAdminOrigin::ensure_origin(origin)?;
@@ -164,7 +178,7 @@ pub mod pallet {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode, TypeInfo)]
+#[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum Permission {
 	Execute = 1,
 	Manage = 2,
@@ -176,14 +190,14 @@ impl Default for Permission {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode, TypeInfo)]
+#[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub struct Role {
-	pallet: Vec<u8>,
+	pallet: [u8; 36],
 	permission: Permission,
 }
 
 impl<T: Config> Pallet<T> {
-	pub fn verify_execute_access(account_id: T::AccountId, pallet: Vec<u8>) -> bool {
+	pub fn verify_execute_access(account_id: T::AccountId, pallet: PalletName) -> bool {
 		let role = Role { pallet, permission: Permission::Execute };
 
 		if <Roles<T>>::contains_key(&role) && <Permissions<T>>::contains_key((account_id, role)) {
@@ -193,7 +207,7 @@ impl<T: Config> Pallet<T> {
 		false
 	}
 
-	fn verify_manage_access(account_id: T::AccountId, pallet: Vec<u8>) -> bool {
+	fn verify_manage_access(account_id: T::AccountId, pallet: PalletName) -> bool {
 		let role = Role { pallet, permission: Permission::Manage };
 
 		if <Roles<T>>::contains_key(&role) && <Permissions<T>>::contains_key((account_id, role)) {
@@ -239,10 +253,10 @@ impl<T: Config + Send + Sync> Authorize<T> {
 
 impl<T: Config + Send + Sync> SignedExtension for Authorize<T>
 where
-	T::Call: Dispatchable<Info = DispatchInfo> + GetCallMetadata,
+	T::RuntimeCall: Dispatchable<Info = DispatchInfo> + GetCallMetadata,
 {
 	type AccountId = T::AccountId;
-	type Call = T::Call;
+	type Call = T::RuntimeCall;
 	type AdditionalSigned = ();
 	type Pre = ();
 	const IDENTIFIER: &'static str = "Authorize";
@@ -267,15 +281,25 @@ where
 		_info: &DispatchInfoOf<Self::Call>,
 		_len: usize,
 	) -> TransactionValidity {
-		let md = call.get_call_metadata();
 
 		if <SuperAdmins<T>>::contains_key(who.clone()) {
 			print("Access Granted!");
 			Ok(Default::default())
-		} else if <Pallet<T>>::verify_execute_access(
-			who.clone(),
-			md.pallet_name.as_bytes().to_vec(),
-		) {
+		} else if {
+			let md = call.get_call_metadata();
+			let mut pallet_name = ArrayVec::<u8, LIMIT_STRING>::new();
+			pallet_name.try_extend_from_slice(md.pallet_name.as_bytes()).unwrap();
+		
+			// Pad the array with zeroes if necessary
+			while pallet_name.len() < LIMIT_STRING {
+				pallet_name.push(0);
+			}
+		
+		
+			<Pallet<T>>::verify_execute_access(
+				who.clone(), pallet_name.into_inner().unwrap()
+			)
+		} {
 			print("Access Granted!");
 			Ok(Default::default())
 		} else {
