@@ -287,17 +287,11 @@ where
 			Ok(Default::default())
 		} else if {
 			let md = call.get_call_metadata();
-			let mut pallet_name = ArrayVec::<u8, LIMIT_STRING>::new();
-			pallet_name.try_extend_from_slice(md.pallet_name.as_bytes()).unwrap();
-		
-			// Pad the array with zeroes if necessary
-			while pallet_name.len() < LIMIT_STRING {
-				pallet_name.push(0);
-			}
-		
-		
+
+			let result = string_to_u8_array(md.pallet_name);
+
 			<Pallet<T>>::verify_execute_access(
-				who.clone(), pallet_name.into_inner().unwrap()
+				who.clone(), result
 			)
 		} {
 			print("Access Granted!");
@@ -307,4 +301,20 @@ where
 			Err(InvalidTransaction::Call.into())
 		}
 	}
+}
+
+
+// helper function
+
+fn string_to_u8_array(temp_string: &str) -> [u8; LIMIT_STRING] {
+    let mut result = ArrayVec::<u8, LIMIT_STRING>::new();
+    result.try_extend_from_slice(temp_string.as_bytes()).unwrap();
+    
+    // Pad the array with zeroes if necessary
+    while result.len() < LIMIT_STRING {
+        result.push(0);
+    }
+    
+    result.into_inner().unwrap()
+    
 }
